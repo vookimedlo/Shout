@@ -106,33 +106,20 @@ public class SFTP {
         return ReadWriteProcessor.processWrite(result: result, session: cSession)
     }
     
-    public func realpath(remotePath: String) throws -> String {
-        guard let data = remotePath.data(using: .utf8) else {
-            throw SSHError.genericError("Unable to convert string to utf8 data")
-        }
-        
-        var targetData = Data()
-        var wasSent = false
-        while !wasSent {
-            switch link(data, target: &targetData, linkType: LIBSSH2_SFTP_REALPATH) {
-            case .written(_):
-                wasSent = true
-            case .eagain:
-                break
-            case .error(let error):
-                throw error
-            }
-        }
-        
-        let target = try targetData.withUnsafeBytes { (bytes) -> String in
+    private func stat(_ remotePath: Data, attrs: inout LIBSSH2_SFTP_ATTRIBUTES, statType: Int32) -> ReadWriteProcessor.WriteResult {
+        let result = remotePath.withUnsafeBytes { (bytes) -> Int in
             let pointer = bytes.baseAddress!.assumingMemoryBound(to: CChar.self)
-            guard let target = String(cString: pointer, encoding: .utf8) else {
-                throw SSHError.genericError("unable to convert data to utf8 string")
-            }
-            return target
+            return Int(libssh2_sftp_stat_ex(sftpSession,
+                                            pointer,
+                                            UInt32(remotePath.count),
+                                            statType,
+                                            &attrs))
+            // LIBSSH2_SFTP_STAT
+            // LIBSSH2_SFTP_LSTAT
+            // LIBSSH2_SFTP_SETSTAT
         }
 
-        return target
+        return ReadWriteProcessor.processWrite(result: result, session: cSession)
     }
 
     /// Makes a new directory on the remote server
@@ -188,6 +175,56 @@ public class SFTP {
             }
         }
         return files
+    }
+    
+    public func realpath(remotePath: String) throws -> String {
+        guard let data = remotePath.data(using: .utf8) else {
+            throw SSHError.genericError("Unable to convert string to utf8 data")
+        }
+        
+        var targetData = Data()
+        var wasSent = false
+        while !wasSent {
+            switch link(data, target: &targetData, linkType: LIBSSH2_SFTP_REALPATH) {
+            case .written(_):
+                wasSent = true
+            case .eagain:
+                break
+            case .error(let error):
+                throw error
+            }
+        }
+        
+        let target = try targetData.withUnsafeBytes { (bytes) -> String in
+            let pointer = bytes.baseAddress!.assumingMemoryBound(to: CChar.self)
+            guard let target = String(cString: pointer, encoding: .utf8) else {
+                throw SSHError.genericError("unable to convert data to utf8 string")
+            }
+            return target
+        }
+
+        return target
+    }
+    
+    public func stat(remotePath: String) throws -> LIBSSH2_SFTP_ATTRIBUTES {
+        guard let data = remotePath.data(using: .utf8) else {
+            throw SSHError.genericError("Unable to convert string to utf8 data")
+        }
+
+        var attrs = LIBSSH2_SFTP_ATTRIBUTES()
+        var wasSent = false
+        while !wasSent {
+            switch stat(data, attrs: &attrs, statType: LIBSSH2_SFTP_STAT) {
+            case .written(_):
+                wasSent = true
+            case .eagain:
+                break
+            case .error(let error):
+                throw error
+            }
+        }
+
+        return attrs
     }
 
     /// Download a file from the remote server to the local device
