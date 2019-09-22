@@ -70,6 +70,30 @@ public class SFTP {
         self.sftpSession = sftpSession
     }
     
+    private func link(_ remotePath: Data, target: inout Data, linkType: Int32) -> (ReadWriteProcessor.WriteResult) {
+        var buffer = [Int8](repeating: 0, count: 1024)
+        let result = remotePath.withUnsafeBytes { (bytes) -> Int in
+            let pointer = bytes.baseAddress!.assumingMemoryBound(to: CChar.self)
+            return Int(libssh2_sftp_symlink_ex(sftpSession,
+                                               pointer,
+                                               UInt32(remotePath.count),
+                                               &buffer,
+                                               UInt32(buffer.count),
+                                               linkType))
+                //LIBSSH2_SFTP_REALPATH
+                //LIBSSH2_SFTP_READLINK
+                //LIBSSH2_SFTP_SYMLINK
+        }
+        
+        let bufferUint8 = buffer.map { (signed) -> UInt8 in
+            return UInt8(signed)
+        }
+        
+        target.removeAll()
+        target.append(contentsOf: bufferUint8)
+        return ReadWriteProcessor.processWrite(result: result, session: cSession)
+    }
+    
     private func mkdir(_ remotePath: Data, permissions: FilePermissions) -> ReadWriteProcessor.WriteResult {
         let result = remotePath.withUnsafeBytes { (bytes) -> Int in
             let pointer = bytes.baseAddress!.assumingMemoryBound(to: CChar.self)
@@ -80,6 +104,31 @@ public class SFTP {
         }
         
         return ReadWriteProcessor.processWrite(result: result, session: cSession)
+    }
+    
+    public func realpath(remotePath: String) throws -> String {
+        guard let data = remotePath.data(using: .utf8) else {
+            throw SSHError.genericError("Unable to convert string to utf8 data")
+        }
+        
+        var targetData = Data()
+        var wasSent = false
+        while !wasSent {
+            switch link(data, target: &targetData, linkType: LIBSSH2_SFTP_REALPATH) {
+            case .written(_):
+                wasSent = true
+            case .eagain:
+                break
+            case .error(let error):
+                throw error
+            }
+        }
+        
+        guard let target = String(data: targetData, encoding: .utf8) else {
+            throw SSHError.genericError("unable to convert data to utf8 string")
+        }
+        
+        return target
     }
 
     /// Makes a new directory on the remote server
