@@ -124,10 +124,14 @@ public class SFTP {
             }
         }
         
-        guard let target = String(data: targetData, encoding: .utf8) else {
-            throw SSHError.genericError("unable to convert data to utf8 string")
+        let target = try targetData.withUnsafeBytes { (bytes) -> String in
+            let pointer = bytes.baseAddress!.assumingMemoryBound(to: CChar.self)
+            guard let target = String(cString: pointer, encoding: .utf8) else {
+                throw SSHError.genericError("unable to convert data to utf8 string")
+            }
+            return target
         }
-        
+
         return target
     }
 
