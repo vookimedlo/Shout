@@ -177,6 +177,27 @@ public class SFTP {
         return files
     }
     
+    public func lstat(remotePath: String) throws -> LIBSSH2_SFTP_ATTRIBUTES {
+        guard let data = remotePath.data(using: .utf8) else {
+            throw SSHError.genericError("Unable to convert string to utf8 data")
+        }
+
+        var attrs = LIBSSH2_SFTP_ATTRIBUTES()
+        var wasSent = false
+        while !wasSent {
+            switch stat(data, attrs: &attrs, statType: LIBSSH2_SFTP_LSTAT) {
+            case .written(_):
+                wasSent = true
+            case .eagain:
+                break
+            case .error(let error):
+                throw error
+            }
+        }
+
+        return attrs
+    }
+    
     public func realpath(remotePath: String) throws -> String {
         guard let data = remotePath.data(using: .utf8) else {
             throw SSHError.genericError("Unable to convert string to utf8 data")
