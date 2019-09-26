@@ -97,6 +97,11 @@ public class SSH {
     }
     
     
+    /// Check whether session is authenticated
+    public func isAuthenticated() -> Bool {
+        return session.isAuthenticated()
+    }
+    
     /// Execute a command on the remote server
     ///
     /// - Parameters:

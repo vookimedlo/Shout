@@ -63,6 +63,10 @@ class Session {
         try SSHError.check(code: code, session: cSession)
     }
     
+    func isAuthenticated() -> Bool {
+        return libssh2_userauth_authenticated(cSession) == 1
+    }
+    
     func openSftp() throws -> SFTP  {
         return try SFTP(cSession: cSession)
     }
