@@ -344,8 +344,7 @@ public class SFTP {
         }
     }
     
-    deinit {
-        libssh2_sftp_shutdown(sftpSession)
+    public func closeSftp() -> Bool {
+        return libssh2_sftp_shutdown(sftpSession) == 0
     }
-    
 }
