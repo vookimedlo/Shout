@@ -61,16 +61,24 @@ public class SFTP {
     
     private let cSession: OpaquePointer
     private let sftpSession: OpaquePointer
+    private let sftpSessionMutex = DispatchSemaphore(value: 1)
         
     init(cSession: OpaquePointer) throws {
+        sftpSessionMutex.wait()
         guard let sftpSession = libssh2_sftp_init(cSession) else {
+            self.sftpSessionMutex.signal()
             throw SSHError.mostRecentError(session: cSession, backupMessage: "libssh2_sftp_init failed")
         }
         self.cSession = cSession
         self.sftpSession = sftpSession
+        self.sftpSessionMutex.signal()
     }
     
     private func link(_ remotePath: Data, target: inout Data, linkType: Int32) -> (ReadWriteProcessor.WriteResult) {
+        sftpSessionMutex.wait()
+        defer {
+            sftpSessionMutex.signal()
+        }
         var buffer = [Int8](repeating: 0, count: 1024)
         let result = remotePath.withUnsafeBytes { (bytes) -> Int in
             let pointer = bytes.baseAddress!.assumingMemoryBound(to: CChar.self)
@@ -95,6 +103,10 @@ public class SFTP {
     }
     
     private func mkdir(_ remotePath: Data, permissions: FilePermissions) -> ReadWriteProcessor.WriteResult {
+        sftpSessionMutex.wait()
+        defer {
+            sftpSessionMutex.signal()
+        }
         let result = remotePath.withUnsafeBytes { (bytes) -> Int in
             let pointer = bytes.baseAddress!.assumingMemoryBound(to: CChar.self)
             return Int(libssh2_sftp_mkdir_ex(sftpSession,
@@ -107,6 +119,10 @@ public class SFTP {
     }
     
     private func stat(_ remotePath: Data, attrs: inout LIBSSH2_SFTP_ATTRIBUTES, statType: Int32) -> ReadWriteProcessor.WriteResult {
+        sftpSessionMutex.wait()
+        defer {
+            sftpSessionMutex.signal()
+        }
         let result = remotePath.withUnsafeBytes { (bytes) -> Int in
             let pointer = bytes.baseAddress!.assumingMemoryBound(to: CChar.self)
             return Int(libssh2_sftp_stat_ex(sftpSession,
@@ -145,7 +161,11 @@ public class SFTP {
 
     /// Lists a directory content from the remote server
     /// - Parameter remotePath: the path to the existing directory on the remote server to list
-    public func ls(remotePath: String) throws -> [String:LIBSSH2_SFTP_ATTRIBUTES]  {
+    public func ls(remotePath: String) throws -> [String:LIBSSH2_SFTP_ATTRIBUTES] {
+        sftpSessionMutex.wait()
+        defer {
+            sftpSessionMutex.signal()
+        }
         let sftpHandle = try SFTPHandle(
                 cSession: cSession,
                 sftpSession: sftpSession,
@@ -255,6 +275,10 @@ public class SFTP {
     ///   - localURL: the location on the local device whether the file should be downloaded to
     /// - Throws: SSHError if file can't be created or download fails
     public func download(remotePath: String, localURL: URL) throws {
+        sftpSessionMutex.wait()
+        defer {
+            sftpSessionMutex.signal()
+        }
         let sftpHandle = try SFTPHandle(
             cSession: cSession,
             sftpSession: sftpSession,
@@ -319,6 +343,10 @@ public class SFTP {
     ///   - permissions: the file permissions to create the new file with; defaults to FilePermissions.default
     /// - Throws: SSHError if upload fails
     public func upload(data: Data, remotePath: String, permissions: FilePermissions = .default) throws {
+        sftpSessionMutex.wait()
+        defer {
+            sftpSessionMutex.signal()
+        }
         let sftpHandle = try SFTPHandle(
             cSession: cSession,
             sftpSession: sftpSession,
@@ -345,6 +373,10 @@ public class SFTP {
     }
     
     public func closeSftp() -> Bool {
+        sftpSessionMutex.wait()
+        defer {
+            sftpSessionMutex.signal()
+        }
         return libssh2_sftp_shutdown(sftpSession) == 0
     }
 }
