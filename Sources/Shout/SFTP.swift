@@ -267,6 +267,29 @@ public class SFTP {
 
         return attrs
     }
+    
+    public func statvfs(remotePath: String) throws -> LIBSSH2_SFTP_STATVFS? {
+        sftpSessionMutex.wait()
+        defer {
+            sftpSessionMutex.signal()
+        }
+        
+        guard let data = remotePath.data(using: .utf8) else {
+            throw SSHError.genericError("Unable to convert string to utf8 data")
+        }
+
+        var attrs = LIBSSH2_SFTP_STATVFS()
+        
+        let result = data.withUnsafeBytes { (bytes) -> Int in
+            let pointer = bytes.baseAddress!.assumingMemoryBound(to: CChar.self)
+            return Int(libssh2_sftp_statvfs(sftpSession,
+                                             pointer,
+                                             data.count,
+                                             &attrs))
+        }
+        
+        return result == 0 ? attrs : nil
+    }
 
     /// Download a file from the remote server to the local device
     ///
